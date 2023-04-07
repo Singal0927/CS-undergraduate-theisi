@@ -3,3 +3,4 @@ matplotlib
 streamlit_echarts
 streamlit_pandas_profiling
 pandas_profiling
+plotly
