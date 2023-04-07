@@ -1,5 +1,4 @@
 sklearn
 torch
 matplotlib
-pylab
 streamlit_echarts
