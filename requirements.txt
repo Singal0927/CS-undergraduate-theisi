@@ -1,5 +1,4 @@
 sklearn
-torch
 matplotlib
 streamlit_echarts
 streamlit_pandas_profiling
