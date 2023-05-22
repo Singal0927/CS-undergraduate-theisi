@@ -80,3 +80,88 @@ class UIE(nn.Module):
         end_logits = torch.squeeze(end_logits, -1)              # (batch, seq_len)
         end_prob = self.sigmoid(end_logits)                     # (batch, seq_len)
         return start_prob, end_prob
+    
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model,max_seq_len=5000,dropout=0.1,batch_first=False) -> None:
+        '''不知道为什么，d_model必须是偶数'''
+        super().__init__()
+        self.x_dim=1 if batch_first else 0
+        self.batch_first=batch_first
+        pos=torch.arange(0,max_seq_len).unsqueeze(1)
+        div_term=torch.pow(10000,torch.arange(0,d_model,2)/d_model)
+        
+        if self.batch_first:
+            pe=torch.zeros(1,max_seq_len,d_model)
+            pe[0,:,0::2]=torch.sin(pos/div_term)
+            pe[0,:,1::2]=torch.cos(pos/div_term)
+        else:
+            pe=torch.zeros(max_seq_len,1,d_model)
+            pe[:,0,0::2]=torch.sin(pos/div_term)
+            pe[:,0,1::2]=torch.cos(pos/div_term)
+        self.register_buffer('pe', pe)
+        self.dropout=nn.Dropout(dropout)
+
+    def forward(self,x):
+        if self.batch_first:
+            x=x+self.pe[:,:x.shape[self.x_dim]]
+        else:
+            x=x+self.pe[:x.shape[self.x_dim]]
+        return self.dropout(x)
+
+
+class TimeSeriesTransformer(nn.Module):
+    def __init__(self,nvars,d_model,d_hid,nheads,nlayers,dropout=0.1) -> None:
+        '''把d_modal与变量个数做映射
+        '''
+        super().__init__()
+        self.model_name='Transformer Encoder'
+        # self.max_seq_len=train_win
+
+        # encoder
+        self.encoder_input_mapping=nn.Linear(nvars,d_model)
+        self.pos_encoding=PositionalEncoding(d_model=d_model,batch_first=True)
+        encoder_layer=nn.TransformerEncoderLayer(d_model,nheads,d_hid,dropout,batch_first=True)
+        self.transformer_encoder=nn.TransformerEncoder(encoder_layer,num_layers=nlayers,norm=None)
+        #norm参数表示每个encoder_layer所需的normalization方法，但是nn.TransformerEncoderLayer已经包含了Layer-normalization，故不需要向norm传递参数，事实上，norm参数是为不具备normalization方法的custorm encoder-layers准备的。
+        
+        # decoder
+        self.decoder_input_mapping=nn.Linear(nvars,d_model)
+        decoder_layer=nn.TransformerDecoderLayer(d_model=d_model,nhead=nheads,dim_feedforward=d_hid,dropout=dropout,batch_first=True)
+        self.transformer_decoder=nn.TransformerDecoder(decoder_layer,num_layers=nlayers,norm=None)
+        self.decoder_output_mapping=nn.Linear(d_model,nvars)
+
+        # 初始化参数
+        self.init_weight()
+    
+    def init_weight(self):
+        init_range=0.1
+        self.encoder_input_mapping.weight.data.uniform_(-init_range,init_range)
+        self.encoder_input_mapping.bias.data.zero_()
+
+        self.decoder_input_mapping.weight.data.uniform_(-init_range,init_range)
+        self.decoder_input_mapping.bias.data.zero_()
+
+        self.decoder_output_mapping.weight.data.uniform_(-init_range,init_range)
+        self.decoder_output_mapping.bias.data.zero_()
+
+    def forward(self,src,tgt,memory_mask=None,tgt_mask=None):
+        '''
+        Return a tensor of shape:
+        [batch_size,tgt_win,nvars]
+        Args:
+            src:[batch_size,train_win,nvars]
+            tgt:[batch_size,tgt_win,nvars]
+            memory_mask:[train_win,train_win]
+            tgt_mask:[tgt_win,tgt_win]
+        '''
+        # encoder
+        src=self.encoder_input_mapping(src)
+        src=self.pos_encoding(src)
+        encoder_output=self.transformer_encoder(src)
+
+        # decoder
+        tgt=self.decoder_input_mapping(tgt)
+        decoder_output=self.transformer_decoder(tgt=tgt,memory=encoder_output,tgt_mask=tgt_mask,memory_mask=memory_mask)#memory：最后一层encoder layer的输出
+        decoder_output=self.decoder_output_mapping(decoder_output)
+        return decoder_output

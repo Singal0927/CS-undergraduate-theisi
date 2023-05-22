@@ -23,7 +23,7 @@ tokenizer=AutoTokenizer.from_pretrained('uie-base-zh')
 # 根据model返回的prob张量中选取span
 def get_span(start_ids, end_ids, with_prob=False):
     """
-    从get_span函数也能看出来，UIE是想一次性生成多个预测的，比如当给定prompt为“地点”与“时间”，text为“北京”与“2021年”
+    # 从get_span函数也能看出来，UIE是想一次性生成多个预测的，比如当给定prompt为“地点”与“时间”，text为“北京”与“2021年”
     Get span set from position start and end list.
     Args:
         start_ids (List[int]/List[tuple]): The start index list.
